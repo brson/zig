@@ -3245,6 +3245,16 @@ pub fn addZirErrorMessages(eb: *ErrorBundle.Wip, file: *Module.File) !void {
     return eb.addZirErrorMessages(file.zir, file.tree, file.source, src_path);
 }
 
+pub fn addZirWarningMessages(eb: *ErrorBundle.Wip, file: *Module.File) !void {
+    assert(file.zir_loaded);
+    assert(file.tree_loaded);
+    assert(file.source_loaded);
+    const gpa = eb.gpa;
+    const src_path = try file.fullPath(gpa);
+    defer gpa.free(src_path);
+    return eb.addZirWarningMessages(file.zir, file.tree, file.source, src_path);
+}
+
 pub fn performAllTheWork(
     comp: *Compilation,
     main_progress_node: std.Progress.Node,

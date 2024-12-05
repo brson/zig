@@ -35,5 +35,8 @@ zig-build: zig-configure
 zig-clean:
    -rm -r build
 
+zig2:
+    cd build && make zig2
+
 build: llvm-install zig-build
 

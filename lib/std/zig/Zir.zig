@@ -53,6 +53,7 @@ pub const ExtraIndex = enum(u32) {
     /// If this is 0, no compile errors. Otherwise there is a `CompileErrors`
     /// payload at this index.
     compile_errors,
+    compile_warnings,
     /// If this is 0, this file contains no imports. Otherwise there is a `Imports`
     /// payload at this index.
     imports,
@@ -120,6 +121,10 @@ pub fn bodySlice(zir: Zir, start: usize, len: usize) []Inst.Index {
 
 pub fn hasCompileErrors(code: Zir) bool {
     return code.extra[@intFromEnum(ExtraIndex.compile_errors)] != 0;
+}
+
+pub fn hasCompileWarnings(code: Zir) bool {
+    return code.extra[@intFromEnum(ExtraIndex.compile_warnings)] != 0;
 }
 
 pub fn deinit(code: *Zir, gpa: Allocator) void {

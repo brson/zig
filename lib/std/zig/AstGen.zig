@@ -41,6 +41,7 @@ source_column: u32 = 0,
 arena: Allocator,
 string_table: std.HashMapUnmanaged(u32, void, StringIndexContext, std.hash_map.default_max_load_percentage) = .{},
 compile_errors: ArrayListUnmanaged(Zir.Inst.CompileErrors.Item) = .{},
+compile_warnings: ArrayListUnmanaged(Zir.Inst.CompileErrors.Item) = .{},
 /// The topmost block of the current function.
 fn_block: ?*GenZir = null,
 fn_var_args: bool = false,
@@ -203,6 +204,23 @@ pub fn generate(gpa: Allocator, tree: Ast) Allocator.Error!Zir {
         }
     }
 
+    const warn_index = @intFromEnum(Zir.ExtraIndex.compile_warnings);
+    if (astgen.compile_warnings.items.len == 0) {
+        astgen.extra.items[warn_index] = 0;
+    } else {
+        try astgen.extra.ensureUnusedCapacity(gpa, 1 + astgen.compile_warnings.items.len *
+            @typeInfo(Zir.Inst.CompileErrors.Item).Struct.fields.len);
+
+        astgen.extra.items[warn_index] = astgen.addExtraAssumeCapacity(Zir.Inst.CompileErrors{
+            .items_len = @intCast(astgen.compile_warnings.items.len),
+        });
+
+        for (astgen.compile_warnings.items) |item| {
+            _ = astgen.addExtraAssumeCapacity(item);
+        }
+        @panic("warnings");
+    }
+    
     const imports_index = @intFromEnum(Zir.ExtraIndex.imports);
     if (astgen.imports.count() == 0) {
         astgen.extra.items[imports_index] = 0;
@@ -3016,9 +3034,9 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
             .local_val => {
                 const s = scope.cast(Scope.LocalVal).?;
                 if (s.used == 0 and s.discarded == 0) {
-                    try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
+                    try astgen.appendWarningTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
                 } else if (s.used != 0 and s.discarded != 0) {
-                    try astgen.appendErrorTokNotes(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
+                    try astgen.appendWarningTokNotes(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
                         try gz.astgen.errNoteTok(s.used, "used here", .{}),
                     });
                 }
@@ -11421,6 +11439,15 @@ fn appendErrorTok(
     try astgen.appendErrorTokNotesOff(token, 0, format, args, &[0]u32{});
 }
 
+fn appendWarningTok(
+    astgen: *AstGen,
+    token: Ast.TokenIndex,
+    comptime format: []const u8,
+    args: anytype,
+) !void {
+    try astgen.appendWarningTokNotesOff(token, 0, format, args, &[0]u32{});
+}
+
 fn failTokNotes(
     astgen: *AstGen,
     token: Ast.TokenIndex,
@@ -11440,6 +11467,16 @@ fn appendErrorTokNotes(
     notes: []const u32,
 ) !void {
     return appendErrorTokNotesOff(astgen, token, 0, format, args, notes);
+}
+
+fn appendWarningTokNotes(
+    astgen: *AstGen,
+    token: Ast.TokenIndex,
+    comptime format: []const u8,
+    args: anytype,
+    notes: []const u32,
+) !void {
+    return appendWarningTokNotesOff(astgen, token, 0, format, args, notes);
 }
 
 /// Same as `fail`, except given a token plus an offset from its starting byte
@@ -11476,6 +11513,35 @@ fn appendErrorTokNotesOff(
         break :blk @intCast(notes_start);
     } else 0;
     try astgen.compile_errors.append(gpa, .{
+        .msg = msg,
+        .node = 0,
+        .token = token,
+        .byte_offset = byte_offset,
+        .notes = notes_index,
+    });
+}
+
+fn appendWarningTokNotesOff(
+    astgen: *AstGen,
+    token: Ast.TokenIndex,
+    byte_offset: u32,
+    comptime format: []const u8,
+    args: anytype,
+    notes: []const u32,
+) !void {
+    @setCold(true);
+    const gpa = astgen.gpa;
+    const string_bytes = &astgen.string_bytes;
+    const msg: Zir.NullTerminatedString = @enumFromInt(string_bytes.items.len);
+    try string_bytes.writer(gpa).print(format ++ "\x00", args);
+    const notes_index: u32 = if (notes.len != 0) blk: {
+        const notes_start = astgen.extra.items.len;
+        try astgen.extra.ensureTotalCapacity(gpa, notes_start + 1 + notes.len);
+        astgen.extra.appendAssumeCapacity(@intCast(notes.len));
+        astgen.extra.appendSliceAssumeCapacity(notes);
+        break :blk @intCast(notes_start);
+    } else 0;
+    try astgen.compile_warnings.append(gpa, .{
         .msg = msg,
         .node = 0,
         .token = token,
