@@ -4403,6 +4403,13 @@ fn runOrTestHotSwap(
 fn updateModule(comp: *Compilation, color: Color, prog_node: std.Progress.Node) !void {
     try comp.update(prog_node);
 
+    var warnings = try comp.getAllWarningsAlloc();
+    defer warnings.deinit(comp.gpa);
+
+    if (warnings.errorMessageCount() > 0) {
+        warnings.renderToStdErrWarning(color.renderOptions());
+    }
+
     var errors = try comp.getAllErrorsAlloc();
     defer errors.deinit(comp.gpa);
 

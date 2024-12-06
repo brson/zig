@@ -218,7 +218,6 @@ pub fn generate(gpa: Allocator, tree: Ast) Allocator.Error!Zir {
         for (astgen.compile_warnings.items) |item| {
             _ = astgen.addExtraAssumeCapacity(item);
         }
-        @panic("warnings");
     }
     
     const imports_index = @intFromEnum(Zir.ExtraIndex.imports);

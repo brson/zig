@@ -113,6 +113,7 @@ compile_log_decls: std.AutoArrayHashMapUnmanaged(Decl.Index, i32) = .{},
 /// Using a map here for consistency with the other fields here.
 /// The ErrorMsg memory is owned by the `File`, using Module's general purpose allocator.
 failed_files: std.AutoArrayHashMapUnmanaged(*File, ?*ErrorMsg) = .{},
+warned_files: std.AutoArrayHashMapUnmanaged(*File, ?*ErrorMsg) = .{},
 /// The ErrorMsg memory is owned by the `EmbedFile`, using Module's general purpose allocator.
 failed_embed_files: std.AutoArrayHashMapUnmanaged(*EmbedFile, *ErrorMsg) = .{},
 /// Using a map here for consistency with the other fields here.
@@ -2231,6 +2232,14 @@ pub fn astGenFile(mod: *Module, file: *File) !void {
             };
             file.status = .success_zir;
             log.debug("AstGen cached success: {s}", .{file.sub_file_path});
+
+            if (file.zir.hasCompileWarnings()) {
+                {
+                    comp.mutex.lock();
+                    defer comp.mutex.unlock();
+                    try mod.warned_files.putNoClobber(gpa, file, null);
+                }
+            }
 
             // TODO don't report compile errors until Sema @importFile
             if (file.zir.hasCompileErrors()) {

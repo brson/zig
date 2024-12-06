@@ -3072,6 +3072,25 @@ pub fn getAllErrorsAlloc(comp: *Compilation) !ErrorBundle {
     return bundle.toOwnedBundle(compile_log_text);
 }
 
+pub fn getAllWarningsAlloc(comp: *Compilation) !ErrorBundle {
+    const gpa = comp.gpa;
+
+    var bundle: ErrorBundle.Wip = undefined;
+    try bundle.init(gpa);
+    defer bundle.deinit();
+
+    if (comp.module) |module| {
+        for (module.warned_files.keys()) |file| {
+            // Must be ZIR errors. Note that this may include AST errors.
+            // addZirErrorMessages asserts that the tree is loaded.
+            _ = try file.getTree(gpa);
+            try addZirWarningMessages(&bundle, file);
+        }
+    }
+
+    return bundle.toOwnedBundle("");
+}
+
 pub const ErrorNoteHashContext = struct {
     eb: *const ErrorBundle.Wip,
 
