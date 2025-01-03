@@ -409,8 +409,8 @@ fn reachableExprComptime(
         try expr(gz, scope, ri, node);
 
     if (gz.refIsNoReturn(result_inst)) {
-        try gz.astgen.appendErrorNodeNotes(reachable_node, "unreachable code", .{}, &[_]u32{
-            try gz.astgen.errNoteNode(node, "control flow is diverted here", .{}),
+        try gz.astgen.appendErrorNodeNotesNonfatal(reachable_node, "unreachable code", .{}, &[_]u32{
+            try gz.astgen.errNoteNodeNonfatal(node, "control flow is diverted here", .{}),
         });
     }
     return result_inst;
@@ -2505,12 +2505,12 @@ fn blockExprStmts(gz: *GenZir, parent_scope: *Scope, statements: []const Ast.Nod
     var scope = parent_scope;
     for (statements) |statement| {
         if (noreturn_src_node != 0) {
-            try astgen.appendErrorNodeNotes(
+            try astgen.appendErrorNodeNotesNonfatal(
                 statement,
                 "unreachable code",
                 .{},
                 &[_]u32{
-                    try astgen.errNoteNode(
+                    try astgen.errNoteNodeNonfatal(
                         noreturn_src_node,
                         "control flow is diverted here",
                         .{},
@@ -3016,9 +3016,9 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
             .local_val => {
                 const s = scope.cast(Scope.LocalVal).?;
                 if (s.used == 0 and s.discarded == 0) {
-                    try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
+                    try astgen.appendErrorTokNonfatal(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
                 } else if (s.used != 0 and s.discarded != 0) {
-                    try astgen.appendErrorTokNotes(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
+                    try astgen.appendErrorTokNotesNonfatal(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
                         try gz.astgen.errNoteTok(s.used, "used here", .{}),
                     });
                 }
@@ -3027,15 +3027,15 @@ fn checkUsed(gz: *GenZir, outer_scope: *Scope, inner_scope: *Scope) InnerError!v
             .local_ptr => {
                 const s = scope.cast(Scope.LocalPtr).?;
                 if (s.used == 0 and s.discarded == 0) {
-                    try astgen.appendErrorTok(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
+                    try astgen.appendErrorTokNonfatal(s.token_src, "unused {s}", .{@tagName(s.id_cat)});
                 } else {
                     if (s.used != 0 and s.discarded != 0) {
-                        try astgen.appendErrorTokNotes(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
+                        try astgen.appendErrorTokNotesNonfatal(s.discarded, "pointless discard of {s}", .{@tagName(s.id_cat)}, &[_]u32{
                             try astgen.errNoteTok(s.used, "used here", .{}),
                         });
                     }
                     if (s.id_cat == .@"local variable" and !s.used_as_lvalue) {
-                        try astgen.appendErrorTokNotes(s.token_src, "local variable is never mutated", .{}, &.{
+                        try astgen.appendErrorTokNotesNonfatal(s.token_src, "local variable is never mutated", .{}, &.{
                             try astgen.errNoteTok(s.token_src, "consider using 'const'", .{}),
                         });
                     }
@@ -11392,6 +11392,34 @@ fn appendErrorNodeNotes(
     });
 }
 
+fn appendErrorNodeNotesNonfatal(
+    astgen: *AstGen,
+    node: Ast.Node.Index,
+    comptime format: []const u8,
+    args: anytype,
+    notes: []const u32,
+) Allocator.Error!void {
+    @setCold(true);
+    const string_bytes = &astgen.string_bytes;
+    const msg: Zir.NullTerminatedString = @enumFromInt(string_bytes.items.len);
+    try string_bytes.writer(astgen.gpa).print(format ++ "\x00", args);
+    const notes_index: u32 = if (notes.len != 0) blk: {
+        const notes_start = astgen.extra.items.len;
+        try astgen.extra.ensureTotalCapacity(astgen.gpa, notes_start + 1 + notes.len);
+        astgen.extra.appendAssumeCapacity(@intCast(notes.len));
+        astgen.extra.appendSliceAssumeCapacity(notes);
+        break :blk @intCast(notes_start);
+    } else 0;
+    try astgen.compile_errors.append(astgen.gpa, .{
+        .msg = msg,
+        .node = node,
+        .token = 0,
+        .byte_offset = 0,
+        .notes = notes_index,
+        .nonfatal = 1,
+    });
+}
+
 fn failNodeNotes(
     astgen: *AstGen,
     node: Ast.Node.Index,
@@ -11421,6 +11449,18 @@ fn appendErrorTok(
     try astgen.appendErrorTokNotesOff(token, 0, format, args, &[0]u32{});
 }
 
+fn appendErrorTokNonfatal(
+    astgen: *AstGen,
+    token: Ast.TokenIndex,
+    comptime format: []const u8,
+    args: anytype,
+) !void {
+    try appendErrorTok(astgen, token, format, args);
+    astgen.compile_errors.items[
+        astgen.compile_errors.items.len - 1
+    ].nonfatal = 1;
+}
+
 fn failTokNotes(
     astgen: *AstGen,
     token: Ast.TokenIndex,
@@ -11439,7 +11479,20 @@ fn appendErrorTokNotes(
     args: anytype,
     notes: []const u32,
 ) !void {
-    return appendErrorTokNotesOff(astgen, token, 0, format, args, notes);
+    try appendErrorTokNotesOff(astgen, token, 0, format, args, notes);
+}
+
+fn appendErrorTokNotesNonfatal(
+    astgen: *AstGen,
+    token: Ast.TokenIndex,
+    comptime format: []const u8,
+    args: anytype,
+    notes: []const u32,
+) !void {
+    try appendErrorTokNotes(astgen, token, format, args, notes);
+    astgen.compile_errors.items[
+        astgen.compile_errors.items.len - 1
+    ].nonfatal = 1;
 }
 
 /// Same as `fail`, except given a token plus an offset from its starting byte
@@ -11529,6 +11582,26 @@ fn errNoteNode(
         .token = 0,
         .byte_offset = 0,
         .notes = 0,
+    });
+}
+
+fn errNoteNodeNonfatal(
+    astgen: *AstGen,
+    node: Ast.Node.Index,
+    comptime format: []const u8,
+    args: anytype,
+) Allocator.Error!u32 {
+    @setCold(true);
+    const string_bytes = &astgen.string_bytes;
+    const msg: Zir.NullTerminatedString = @enumFromInt(string_bytes.items.len);
+    try string_bytes.writer(astgen.gpa).print(format ++ "\x00", args);
+    return astgen.addExtra(Zir.Inst.CompileErrors.Item{
+        .msg = msg,
+        .node = node,
+        .token = 0,
+        .byte_offset = 0,
+        .notes = 0,
+        .nonfatal = 1,
     });
 }
 

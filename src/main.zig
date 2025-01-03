@@ -4059,7 +4059,8 @@ fn serve(
                     defer output.deinit(gpa);
                     if (output.errors.errorMessageCount() != 0) {
                         try server.serveErrorBundle(output.errors);
-                    } else {
+                    }
+                    if (!output.errors.fatal()) {
                         try server.serveEmitBinPath(output.out_zig_path, .{
                             .flags = .{ .cache_hit = output.cache_hit },
                         });
@@ -4133,7 +4134,9 @@ fn serveUpdateResults(s: *Server, comp: *Compilation) !void {
     defer error_bundle.deinit(gpa);
     if (error_bundle.errorMessageCount() > 0) {
         try s.serveErrorBundle(error_bundle);
-        return;
+        if (error_bundle.fatal()) {
+            return;
+        }
     }
 
     // This logic is counter-intuitive because the protocol accounts for each
@@ -4408,7 +4411,9 @@ fn updateModule(comp: *Compilation, color: Color, prog_node: std.Progress.Node) 
 
     if (errors.errorMessageCount() > 0) {
         errors.renderToStdErr(color.renderOptions());
-        return error.SemanticAnalyzeFail;
+        if (errors.fatal()) {
+            return error.SemanticAnalyzeFail;
+        }
     }
 }
 

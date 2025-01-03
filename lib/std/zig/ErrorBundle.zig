@@ -64,6 +64,7 @@ pub const ErrorMessage = struct {
     count: u32 = 1,
     src_loc: SourceLocationIndex = .none,
     notes_len: u32 = 0,
+    nonfatal: u32 = 0,
 };
 
 pub const ReferenceTrace = struct {
@@ -86,6 +87,20 @@ pub fn deinit(eb: *ErrorBundle, gpa: Allocator) void {
 pub fn errorMessageCount(eb: ErrorBundle) u32 {
     if (eb.extra.len == 0) return 0;
     return eb.getErrorMessageList().len;
+}
+
+pub fn fatal(eb: ErrorBundle) bool {
+    if (eb.errorMessageCount() > 0) {
+        for (eb.getMessages()) |err_msg| {
+            const msg = eb.getErrorMessage(err_msg);
+            if (msg.nonfatal == 0) {
+                return true;
+            }
+        }
+        return false;
+    } else {
+        return false;
+    }
 }
 
 pub fn getErrorMessageList(eb: ErrorBundle) ErrorMessageList {
@@ -164,7 +179,12 @@ pub fn renderToStdErr(eb: ErrorBundle, options: RenderOptions) void {
 pub fn renderToWriter(eb: ErrorBundle, options: RenderOptions, writer: anytype) anyerror!void {
     if (eb.extra.len == 0) return;
     for (eb.getMessages()) |err_msg| {
-        try renderErrorMessageToWriter(eb, options, err_msg, writer, "error", .red, 0);
+        const msg = eb.getErrorMessage(err_msg);
+        if (msg.nonfatal == 0) {
+            try renderErrorMessageToWriter(eb, options, err_msg, writer, "error", .red, 0);
+        } else {
+            try renderErrorMessageToWriter(eb, options, err_msg, writer, "warning", .yellow, 0);
+        }
     }
 
     if (options.include_log_text) {
@@ -503,6 +523,7 @@ pub const Wip = struct {
                         .source_line = try eb.addString(err_loc.source_line),
                     }),
                     .notes_len = item.data.notesLen(zir),
+                    .nonfatal = item.data.nonfatal,
                 });
             }
 

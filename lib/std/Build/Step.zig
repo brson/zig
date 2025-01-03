@@ -416,7 +416,7 @@ pub fn evalZigProcess(
 
     try handleChildProcessTerm(s, term, null, argv);
 
-    if (s.result_error_bundle.errorMessageCount() > 0) {
+    if (s.result_error_bundle.fatal()) {
         return s.fail("the following command failed with {d} compilation errors:\n{s}", .{
             s.result_error_bundle.errorMessageCount(),
             try allocPrintCmd(arena, null, argv),

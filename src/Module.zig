@@ -2369,8 +2369,10 @@ pub fn astGenFile(mod: *Module, file: *File) !void {
             defer comp.mutex.unlock();
             try mod.failed_files.putNoClobber(gpa, file, null);
         }
-        file.status = .astgen_failure;
-        return error.AnalysisFail;
+        if (file.zir.fatal()) {
+            file.status = .astgen_failure;
+            return error.AnalysisFail;
+        }
     }
 
     if (file.prev_zir) |prev_zir| {

@@ -122,6 +122,27 @@ pub fn hasCompileErrors(code: Zir) bool {
     return code.extra[@intFromEnum(ExtraIndex.compile_errors)] != 0;
 }
 
+pub fn fatal(zir: Zir) bool {
+    if (!zir.hasCompileErrors()) {
+        return false;
+    }
+
+    const payload_index = zir.extra[@intFromEnum(Zir.ExtraIndex.compile_errors)];
+    assert(payload_index != 0);
+
+    const header = zir.extraData(Inst.CompileErrors, payload_index);
+    const items_len = header.data.items_len;
+    var extra_index = header.end;
+    for (0..items_len) |_| {
+        const item = zir.extraData(Zir.Inst.CompileErrors.Item, extra_index);
+        extra_index = item.end;
+        if (item.data.nonfatal == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn deinit(code: *Zir, gpa: Allocator) void {
     code.instructions.deinit(gpa);
     gpa.free(code.string_bytes);
@@ -3446,6 +3467,7 @@ pub const Inst = struct {
             /// 0 or a payload index of a `Block`, each is a payload
             /// index of another `Item`.
             notes: u32,
+            nonfatal: u32 = 0,
 
             pub fn notesLen(item: Item, zir: Zir) u32 {
                 if (item.notes == 0) return 0;
