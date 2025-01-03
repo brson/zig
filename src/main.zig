@@ -4204,7 +4204,7 @@ fn serve(
                     try cmdTranslateC(comp, arena, &output, file_system_inputs, main_progress_node);
                     defer output.deinit(gpa);
                     try server.serveStringMessage(.file_system_inputs, file_system_inputs.items);
-                    if (output.errors.errorMessageCount() != 0) {
+                    if (!output.errors.fatal()) {
                         try server.serveErrorBundle(output.errors);
                     } else {
                         try server.serveEmitDigest(&output.digest, .{
@@ -4291,7 +4291,9 @@ fn serveUpdateResults(s: *Server, comp: *Compilation) !void {
 
     if (error_bundle.errorMessageCount() > 0) {
         try s.serveErrorBundle(error_bundle);
-        return;
+        if (error_bundle.fatal()) {
+            return;
+        }
     }
 
     if (comp.digest) |digest| {
@@ -4522,7 +4524,9 @@ fn updateModule(comp: *Compilation, color: Color, prog_node: std.Progress.Node) 
 
     if (errors.errorMessageCount() > 0) {
         errors.renderToStdErr(color.renderOptions());
-        return error.SemanticAnalyzeFail;
+        if (errors.fatal()) {
+            return error.SemanticAnalyzeFail;
+        }
     }
 }
 

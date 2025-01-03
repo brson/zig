@@ -3503,7 +3503,7 @@ fn anyErrors(comp: *Compilation) bool {
 fn totalErrorCount(comp: *Compilation) !u32 {
     var errors = try comp.getAllErrorsAlloc();
     defer errors.deinit(comp.gpa);
-    return errors.errorMessageCount();
+    return errors.errorMessageCountFatal();
 }
 
 pub const ErrorNoteHashContext = struct {
