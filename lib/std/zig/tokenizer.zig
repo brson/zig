@@ -397,6 +397,8 @@ pub const Tokenizer = struct {
         period_asterisk,
         saw_at_sign,
         invalid,
+        block_comment,
+        block_comment_end,
     };
 
     /// After this returns invalid, it will reset on the next newline, returning tokens starting from there.
@@ -698,6 +700,26 @@ pub const Tokenizer = struct {
                     else => continue :state .invalid,
                 }
             },
+            .block_comment => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    0 => result.tag = .invalid,
+                    '*' => continue :state .block_comment_end,
+                    else => continue :state .block_comment,
+                }
+            },
+            .block_comment_end => {
+                self.index += 1;
+                switch (self.buffer[self.index]) {
+                    0 => result.tag = .invalid,
+                    '/' => {
+                        self.index += 1;
+                        result.loc.start = self.index;
+                        continue :state .start;
+                    },
+                    else => continue :state .block_comment,
+                }
+            },
             .string_literal => {
                 self.index += 1;
                 switch (self.buffer[self.index]) {
@@ -952,6 +974,7 @@ pub const Tokenizer = struct {
                         result.tag = .slash_equal;
                         self.index += 1;
                     },
+                    '*' => continue :state .block_comment,
                     else => result.tag = .slash,
                 }
             },
